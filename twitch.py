@@ -11,6 +11,7 @@ from collections import abc, deque, OrderedDict
 from datetime import datetime, timedelta, timezone
 from contextlib import suppress, asynccontextmanager
 from typing import Any, Literal, Final, NoReturn, overload, cast, TYPE_CHECKING
+import os
 
 import aiohttp
 from yarl import URL
@@ -1280,6 +1281,18 @@ class Twitch:
                     response_json: JsonType | list[JsonType] = await response.json()
             gql_logger.debug(f"GQL Response: {response_json}")
             orig_response = response_json
+
+            # Save raw response payload to a timestamped JSON file
+            # Example path: responses/20250812T153045_123456.json
+            try:
+                os.makedirs("responses", exist_ok=True)
+                ts: str = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
+                with open(f"responses/{ts}.json", "w", encoding="utf-8") as f:
+                    json.dump(orig_response, f, ensure_ascii=False, indent=2)
+            except Exception as e:  # pragma: no cover - non-critical diagnostics
+                # Don't let a dump failure affect normal flow
+                logger.debug(f"Failed to write responses dump: {e!r}")
+
             if isinstance(response_json, list):
                 response_list = response_json
             else:
