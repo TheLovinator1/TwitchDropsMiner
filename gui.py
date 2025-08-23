@@ -1536,11 +1536,18 @@ class _SettingsVars(TypedDict):
 class SettingsPanel:
     AUTOSTART_NAME: str = "TwitchDropsMiner"
     AUTOSTART_KEY: str = "HKCU/Software/Microsoft/Windows/CurrentVersion/Run"
-    PRIORITY_MODES: dict[PriorityMode, str] = {
-        PriorityMode.PRIORITY_ONLY: _("gui", "settings", "priority_modes", "priority_only"),
-        PriorityMode.ENDING_SOONEST: _("gui", "settings", "priority_modes", "ending_soonest"),
-        PriorityMode.LOW_AVBL_FIRST: _("gui", "settings", "priority_modes", "low_availability"),
-    }
+
+    @cached_property
+    def PRIORITY_MODES(self) -> dict[PriorityMode, str]:
+        # NOTE: Translation calls have to be deferred here,
+        # to allow changing the language before the settings panel is initialized.
+        return {
+            PriorityMode.PRIORITY_ONLY: _("gui", "settings", "priority_modes", "priority_only"),
+            PriorityMode.ENDING_SOONEST: _("gui", "settings", "priority_modes", "ending_soonest"),
+            PriorityMode.LOW_AVBL_FIRST: _(
+                "gui", "settings", "priority_modes", "low_availability"
+            ),
+        }
 
     def __init__(self, manager: GUIManager, master: ttk.Widget):
         self._twitch = manager._twitch
@@ -2341,11 +2348,12 @@ if __name__ == "__main__":
         cm = current_minutes
         tm = total_minutes
         ref_stamp = datetime.now(timezone.utc)
-        image_url = (
-            "https://static-cdn.jtvnw.net/twitch-drops-assets-prod/"
-            "BENEFIT-81ab5665-b2f4-4179-96e6-74da5a82da28.jpeg"
+        drop_image_url = (
+            "https://static-cdn.jtvnw.net/twitch-quests-assets/"
+            "REWARD/e0ede26e-b071-47f0-af5f-b80b26fa9fb4.png"
         )
-        benefits = [SimpleNamespace(name=name, image_url=image_url) for name in rewards]
+        campaign_image_url = "https://static-cdn.jtvnw.net/ttv-boxart/515025-120x160.jpg"
+        benefits = [SimpleNamespace(name=name, image_url=drop_image_url) for name in rewards]
         mock = SimpleNamespace(
             id="0",
             campaign=HashNamespace(
@@ -2358,7 +2366,7 @@ if __name__ == "__main__":
                 eligible=False,
                 finished=False,
                 link_url="https://google.com",
-                image_url="https://static-cdn.jtvnw.net/ttv-boxart/460630-285x380.jpg",
+                image_url=campaign_image_url,
                 allowed_channels=[],
                 starts_at=ref_stamp,
                 ends_at=ref_stamp + timedelta(days=7),
@@ -2370,7 +2378,7 @@ if __name__ == "__main__":
                 progress=(cd * tm + cm) / (td * tm),
                 remaining_minutes=(td - cd) * tm - cm,
             ),
-            image_url=image_url,
+            image_url=drop_image_url,
             can_claim=False,
             can_earn=lambda: False,
             is_claimed=False,
@@ -2407,7 +2415,7 @@ if __name__ == "__main__":
         mock.change_state = lambda state: mock.gui.print(f"State change: {state.value}")
         mock.state_change = lambda state: partial(mock.change_state, state)
         mock.request = aiohttp.request
-        # _.set_language("Dansk")
+        # _.set_language("Русский")
         gui = GUIManager(mock)  # type: ignore
         mock.gui = gui
         mock.close = gui.stop
