@@ -1,0 +1,100 @@
+# Version Control
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# IDE and Editor
+.idea/
+.vscode/
+.editorconfig
+*.swp
+*.swo
+*.swn
+*~
+.DS_Store
+Thumbs.db
+
+# Build and Distribution
+build/
+dist/
+*.egg-info/
+appimage/
+
+# Python Environments
+env/
+venv/
+ENV/
+.venv/
+
+# Python Cache and Compiled Files
+__pycache__/
+*.py[cod]
+*$py.class
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.so
+
+# Development and Testing
+tests/
+test/
+responses/
+logs/
+log/
+lock.file
+cache/
+*.tmp
+*.log
+
+# Configuration and Data Files
+*.json
+!lang/*.json
+
+# Development Configuration
+.env
+.env.*
+renovate.json
+settings.json
+run_dev.bat
+
+# Build and Setup Scripts
+build.bat
+build.sh
+build.spec
+pack.bat
+setup_env.bat
+setup_env.sh
+
+# Development Tools Configuration
+tox.ini
+Makefile
+.pre-commit-config.yaml
+pytest.ini
+pyproject.toml.dev
+
+# Documentation and Metadata
+README.md
+LICENSE
+manual.txt
+*.md
+docs/
+CONTRIBUTING.md
+CHANGELOG.md
+
+# Common Archive and Executable Files
+*.exe
+*.zip
+*.tar.gz
+*.gz
+*.tgz
+*.rar
+*.7z
+*.jar
+*.whl
+
+# Docker-specific
+Dockerfile
+docker-compose.yml
+.dockerignore

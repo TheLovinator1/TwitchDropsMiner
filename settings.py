@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any, TypedDict, TYPE_CHECKING
 
 from yarl import URL
@@ -20,6 +21,7 @@ class SettingsFile(TypedDict):
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
+    unlinked_campaigns: bool
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
@@ -34,6 +36,7 @@ default_settings: SettingsFile = {
     "connection_quality": 1,
     "language": DEFAULT_LANG,
     "tray_notifications": True,
+    "unlinked_campaigns": False,
     "enable_badges_emotes": False,
     "available_drops_check": False,
     "priority_mode": PriorityMode.PRIORITY_ONLY,
@@ -42,7 +45,6 @@ default_settings: SettingsFile = {
 
 class Settings:
     # from args
-    log: bool
     tray: bool
     dump: bool
     # args properties
@@ -58,6 +60,7 @@ class Settings:
     autostart_tray: bool
     connection_quality: int
     tray_notifications: bool
+    unlinked_campaigns: bool
     enable_badges_emotes: bool
     available_drops_check: bool
     priority_mode: PriorityMode
@@ -66,8 +69,15 @@ class Settings:
 
     def __init__(self, args: ParsedArgs):
         self._settings: SettingsFile = json_load(SETTINGS_PATH, default_settings)
+        self.__get_settings_from_env__()
         self._args: ParsedArgs = args
         self._altered: bool = False
+
+    def __get_settings_from_env__(self):
+        if os.environ.get('PRIORITY_MODE') in ['0', '1', '2']:
+            self._settings["priority_mode"] = PriorityMode(int(os.environ.get('PRIORITY_MODE')))
+        if 'UNLINKED_CAMPAIGNS' in os.environ:
+            self._settings["unlinked_campaigns"] = os.environ.get('UNLINKED_CAMPAIGNS') == '1'
 
     # default logic of reading settings is to check args first, then the settings file
     def __getattr__(self, name: str, /) -> Any:

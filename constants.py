@@ -100,7 +100,7 @@ SCRIPTS_PATH = Path(VENV_PATH, SYS_SCRIPTS)
 # NOTE: These don't have to be available to the end-user, so the path points to the internal dir
 LANG_PATH = _resource_path("lang")
 # Other Paths
-LOG_PATH = Path(WORKING_DIR, "log.txt")
+LOG_PATH = Path(WORKING_DIR, "logs", "twitch_drops.log")
 DUMP_PATH = Path(WORKING_DIR, "dump.dat")
 LOCK_PATH = Path(WORKING_DIR, "lock.file")
 CACHE_PATH = Path(WORKING_DIR, "cache")
@@ -368,7 +368,7 @@ GQL_OPERATIONS: dict[str, GQLOperation] = {
             "channelID": ...,  # channel ID as a str
         },
     ),
-    # retuns stream playback access token
+    # returns stream playback access token
     "PlaybackAccessToken": GQLOperation(
         "PlaybackAccessToken",
         "ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9",

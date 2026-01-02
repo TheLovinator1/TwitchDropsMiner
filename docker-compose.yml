@@ -1,0 +1,49 @@
+services:
+  twitchdropsminer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: twitch_drops_miner
+    restart: always
+    init: true
+    pull_policy: always
+    
+    # Environment Variables
+    environment:
+      # Set to "1" to enable mining drops from campaigns not linked to your account
+      UNLINKED_CAMPAIGNS: "0"
+      
+      # Priority Mode for mining campaigns
+      # 0: Use the priority list directly
+      # 1: Prioritize based on time-to-end (default)
+      # 2: Optimize by time ratio
+      PRIORITY_MODE: "1"
+      
+      # Docker environment flag (handled by app)
+      TDM_DOCKER: "true"
+    
+    # Volume Mounts
+    volumes:
+      # Persistent login session
+      - ./cookies.jar:/TwitchDropsMiner/cookies.jar
+      
+      # Application settings and priority list
+      - ./settings.json:/TwitchDropsMiner/settings.json
+      
+      # Application logs
+      - ./logs:/TwitchDropsMiner/logs
+      
+      # Timezone synchronization
+      - /etc/localtime:/etc/localtime:ro
+    
+    # Health Check
+    healthcheck:
+      test: ["CMD", "./healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      start_period: 1m
+      retries: 3
+    
+    # Interactive and TTY (for proper signal handling)
+    stdin_open: true
+    tty: true

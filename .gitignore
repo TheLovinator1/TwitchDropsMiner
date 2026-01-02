@@ -9,12 +9,21 @@ __pycache__
 /*.tmp
 /Twitch Drops Miner
 # Dev files
+/.idea
+/.vscode
 /env
+/venv
 /cache
-/*.jar
-log.txt
+/*.jar*
+/*log.txt
+/logs
 /dump.dat
 /lock.file
+pipfile
+pipfile.lock
+.pdm-python
+pdm.lock
+pyproject.toml
 settings.json
 /lang/English.json
 # AppImage
@@ -23,4 +32,4 @@ settings.json
 /appimage-build
 /*.AppImage
 /*.AppImage.zsync
-/responses
+responses/*.json

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import json
 import asyncio
 import logging
@@ -11,9 +12,9 @@ from collections import abc, deque, OrderedDict
 from datetime import datetime, timedelta, timezone
 from contextlib import suppress, asynccontextmanager
 from typing import Any, Literal, Final, NoReturn, overload, cast, TYPE_CHECKING
-import os
 
 import aiohttp
+import pystray
 from yarl import URL
 
 from translate import _
@@ -450,6 +451,8 @@ class Twitch:
         self.websocket = WebsocketPool(self)
         # Maintenance task
         self._mnt_task: asyncio.Task[None] | None = None
+        # Heartbeat task
+        self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def get_session(self) -> aiohttp.ClientSession:
         if (session := self._session) is not None:
@@ -495,6 +498,9 @@ class Twitch:
         if self._mnt_task is not None:
             self._mnt_task.cancel()
             self._mnt_task = None
+        if self._heartbeat_task is not None:
+            self._heartbeat_task.cancel()
+            self._heartbeat_task = None
         # stop websocket, close session and save cookies
         await self.websocket.stop(clear_topics=True)
         if self._session is not None:
@@ -585,6 +591,11 @@ class Twitch:
             with open(DUMP_PATH, 'w', encoding="utf8"):
                 # replace the existing file with an empty one
                 pass
+
+        # Start heartbeat task for Docker health checks
+        if os.getenv('TDM_DOCKER'):
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
         while True:
             try:
                 await self._run()
@@ -605,6 +616,7 @@ class Twitch:
         • Selecting a stream to watch, and watching it
         • Changing the stream that's being watched if necessary
         """
+        self.settings.save(force=True)
         self.gui.start()
         auth_state = await self.get_auth()
         await self.websocket.start()
@@ -627,13 +639,15 @@ class Twitch:
                 if self.settings.dump:
                     self.gui.close()
                     continue
-                self.gui.tray.change_icon("idle")
+                if pystray.Icon.HAS_MENU:
+                    self.gui.tray.change_icon("idle")
                 self.gui.status.update(_("gui", "status", "idle"))
                 self.stop_watching()
                 # clear the flag and wait until it's set again
                 self._state_change.clear()
             elif self._state is State.INVENTORY_FETCH:
-                self.gui.tray.change_icon("maint")
+                if pystray.Icon.HAS_MENU:
+                    self.gui.tray.change_icon("maint")
                 # ensure the websocket is running
                 await self.websocket.start()
                 await self.fetch_inventory()
@@ -653,31 +667,30 @@ class Twitch:
                 exclude = self.settings.exclude
                 priority = self.settings.priority
                 priority_mode = self.settings.priority_mode
-                priority_only = priority_mode is PriorityMode.PRIORITY_ONLY
                 next_hour = datetime.now(timezone.utc) + timedelta(hours=1)
                 # sorted_campaigns: list[DropsCampaign] = list(self.inventory)
                 sorted_campaigns: list[DropsCampaign] = self.inventory
-                if not priority_only:
-                    if priority_mode is PriorityMode.ENDING_SOONEST:
-                        sorted_campaigns.sort(key=lambda c: c.ends_at)
-                    elif priority_mode is PriorityMode.LOW_AVBL_FIRST:
-                        sorted_campaigns.sort(key=lambda c: c.availability)
-                sorted_campaigns.sort(
-                    key=lambda c: (
-                        priority.index(c.game.name) if c.game.name in priority else MAX_INT
-                    )
-                )
+                # Determine the primary sorting key based on priority mode
+                if priority_mode is PriorityMode.ENDING_SOONEST:
+                    primary_key = lambda c: (c.ends_at, MAX_INT)
+                elif priority_mode is PriorityMode.LOW_AVBL_FIRST:
+                    primary_key = lambda c: (c.availability, MAX_INT)
+                else:
+                    primary_key = lambda c: (priority.index(c.game.name) if c.game.name in priority else MAX_INT)
+                # Sort the campaigns with the appropriate key
+                sorted_campaigns.sort(key=primary_key)
                 for campaign in sorted_campaigns:
                     game: Game = campaign.game
                     if (
                         game not in self.wanted_games  # isn't already there
                         # and isn't excluded by list or priority mode
-                        and game.name not in exclude
-                        and (not priority_only or game.name in priority)
+                        and (game.name not in exclude and game.name in priority)
+                        # and is eligible for earning drops
+                        and campaign.eligible
                         # and can be progressed within the next hour
                         and campaign.can_earn_within(next_hour)
                     ):
-                        # non-excluded games with no priority are placed last, below priority ones
+                        # Add the game to the wanted list
                         self.wanted_games.append(game)
                 full_cleanup = True
                 self.restart_watching()
@@ -868,7 +881,8 @@ class Twitch:
                     self.change_state(State.IDLE)
                 del new_watching, selected_channel, watching_channel
             elif self._state is State.EXIT:
-                self.gui.tray.change_icon("pickaxe")
+                if pystray.Icon.HAS_MENU:
+                    self.gui.tray.change_icon("pickaxe")
                 self.gui.status.update(_("gui", "status", "exiting"))
                 # we've been requested to exit the application
                 break
@@ -921,8 +935,9 @@ class Twitch:
                     if gql_drop is not None and gql_drop.can_earn(channel):
                         gql_drop.update_minutes(drop_data["currentMinutesWatched"])
                         drop_text: str = (
-                            f"{gql_drop.name} ({gql_drop.campaign.game}, "
-                            f"{gql_drop.current_minutes}/{gql_drop.required_minutes})"
+                            f"{gql_drop.campaign.game} | {gql_drop.campaign.name} "
+                            f"({gql_drop.campaign.claimed_drops}/{gql_drop.campaign.total_drops}) | "
+                            f"{gql_drop.name}: {gql_drop.current_minutes}/{gql_drop.required_minutes}"
                         )
                         logger.log(CALL, f"Drop progress from GQL: {drop_text}")
                         handled = True
@@ -937,8 +952,9 @@ class Twitch:
                         if (active_drop := active_campaign.first_drop) is not None:
                             active_drop.display()
                             drop_text = (
-                                f"{active_drop.name} ({active_drop.campaign.game}, "
-                                f"{active_drop.current_minutes}/{active_drop.required_minutes})"
+                                f"{active_drop.campaign.game} | {active_drop.campaign.name} "
+                                f"({active_drop.campaign.claimed_drops}/{active_drop.campaign.total_drops}) | "
+                                f"{active_drop.name}: {active_drop.current_minutes}/{active_drop.required_minutes}"
                             )
                         logger.log(CALL, f"Drop progress from active search: {drop_text}")
                         handled = True
@@ -949,7 +965,7 @@ class Twitch:
     @task_wrapper(critical=True)
     async def _maintenance_task(self) -> None:
         now = datetime.now(timezone.utc)
-        next_period = now + timedelta(hours=1)
+        next_period = now + timedelta(minutes=30)
         while True:
             # exit if there's no need to repeat the loop
             now = datetime.now(timezone.utc)
@@ -1018,7 +1034,8 @@ class Twitch:
         )
 
     def watch(self, channel: Channel, *, update_status: bool = True):
-        self.gui.tray.change_icon("active")
+        if pystray.Icon.HAS_MENU:
+            self.gui.tray.change_icon("active")
         self.gui.channels.set_watching(channel)
         self.watching_channel.set(channel)
         if update_status:
@@ -1190,18 +1207,17 @@ class Twitch:
                 self.change_state(State.INVENTORY_FETCH)
             return
         assert msg_type == "drop-progress"
-        if drop is not None:
+        if drop is not None and drop.can_earn(self.watching_channel.get_with_default(None)):
+            # the received payload is for the drop we expected
+            drop.update_minutes(message["data"]["current_progress_min"])
             drop_text = (
-                f"{drop.name} ({drop.campaign.game}, "
-                f"{message['data']['current_progress_min']}/"
-                f"{message['data']['required_progress_min']})"
+                f"{drop.campaign.game} | {drop.campaign.name} "
+                f"({drop.campaign.claimed_drops}/{drop.campaign.total_drops}) | "
+                f"{drop.name}: {drop.current_minutes}/{drop.required_minutes}"
             )
         else:
             drop_text = "<Unknown>"
         logger.log(CALL, f"Drop update from websocket: {drop_text}")
-        if drop is not None and drop.can_earn(self.watching_channel.get_with_default(None)):
-            # the received payload is for the drop we expected
-            drop.update_minutes(message["data"]["current_progress_min"])
 
     @task_wrapper
     async def process_notifications(self, user_id: int, message: JsonType):
@@ -1231,6 +1247,10 @@ class Twitch:
         session_timeout = timedelta(seconds=session.timeout.total or 0)
         backoff = ExponentialBackoff(maximum=3*60)
         for delay in backoff:
+            if os.getenv('TDM_DOCKER'):
+              if delay == 180:
+                with open('/tmp/healthcheck.connectionerror', 'w') as f:
+                  f.write('Container is Unhealthy')
             if self.gui.close_requested:
                 raise ExitRequest()
             elif (
@@ -1295,18 +1315,6 @@ class Twitch:
                     response_json: JsonType | list[JsonType] = await response.json()
             gql_logger.debug(f"GQL Response: {response_json}")
             orig_response = response_json
-
-            # Save raw response payload to a timestamped JSON file
-            # Example path: responses/20250812T153045_123456.json
-            try:
-                os.makedirs("responses", exist_ok=True)
-                ts: str = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
-                with open(f"responses/{ts}.json", "w", encoding="utf-8") as f:
-                    json.dump(orig_response, f, ensure_ascii=False, indent=2)
-            except Exception as e:  # pragma: no cover - non-critical diagnostics
-                # Don't let a dump failure affect normal flow
-                logger.debug(f"Failed to write responses dump: {e!r}")
-
             if isinstance(response_json, list):
                 response_list = response_json
             else:
@@ -1633,3 +1641,27 @@ class Twitch:
                 continue
             available_drops: list[JsonType] = acl_available_drops_map.get(channel_id, [])
             channel.external_update(channel_data, available_drops)
+
+    async def _heartbeat_loop(self):
+        """
+        Periodically updates a heartbeat file with the current timestamp
+        to indicate the application is running properly.
+        """
+        logger.info("Starting heartbeat task")
+        while True:
+            try:
+                # Write current UNIX timestamp to heartbeat file
+                if os.getenv('TDM_DOCKER'):
+                    with open('/tmp/healthcheck.heartbeat', 'w') as f:
+                        f.write(str(int(time())))
+
+                # Sleep for 60 seconds before next heartbeat
+                await asyncio.sleep(60)
+
+                # Exit if app is closing
+                if self.gui.close_requested:
+                    break
+
+            except Exception:
+                logger.exception("Error in heartbeat task")
+                await asyncio.sleep(10)  # Sleep on error to avoid tight loop

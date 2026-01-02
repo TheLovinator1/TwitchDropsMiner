@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import math
 import logging
+import pystray
 from enum import Enum
 from itertools import chain
 from typing import TYPE_CHECKING
@@ -68,6 +69,7 @@ class BaseDrop:
         self.ends_at: datetime = timestamp(data["endAt"])
         self.claim_id: str | None = None
         self.is_claimed: bool = False
+        bugged_time = datetime(1, 1, 1, 0, 0, tzinfo=timezone.utc) # Twitch sometimes falsely reports this as last time claimed.
         if "self" in data:
             self.claim_id = data["self"]["dropInstanceID"]
             self.is_claimed = data["self"]["isClaimed"]
@@ -85,7 +87,7 @@ class BaseDrop:
                     if (bid := benefit.id) in claimed_benefits
                 ]
             )
-            and all(self.starts_at <= dt < self.ends_at for dt in dts)
+            and all( (self.starts_at <= dt < self.ends_at) | (dt == bugged_time) for dt in dts)
         ):
             self.is_claimed = True
         self.precondition_drops: list[str] = [d["id"] for d in (data["preconditionDrops"] or [])]
@@ -169,16 +171,15 @@ class BaseDrop:
         if result:
             self.is_claimed = result
             claim_text = (
-                f"{self.campaign.game.name}\n"
-                f"{self.rewards_text()} "
-                f"({self.campaign.claimed_drops}/{self.campaign.total_drops})"
+                f"{self.campaign.game.name} | {self.campaign.name} "
+                f"({self.campaign.claimed_drops}/{self.campaign.total_drops}) | "
+                f"{self.rewards_text()}"
             )
-            # two different claim texts, becase a new line after the game name
-            # looks ugly in the output window - replace it with a space
             self._twitch.print(
-                _("status", "claimed_drop").format(drop=claim_text.replace('\n', ' '))
+                _("status", "claimed_drop").format(drop=claim_text)
             )
-            self._twitch.gui.tray.notify(claim_text, _("gui", "tray", "notification_title"))
+            if pystray.Icon.HAS_MENU:
+                self._twitch.gui.tray.notify(claim_text, _("gui", "tray", "notification_title"))
         else:
             logger.error(f"Drop claim has potentially failed! Drop ID: {self.id}")
         return result
@@ -343,7 +344,8 @@ class DropsCampaign:
         self.id: str = data["id"]
         self.name: str = data["name"]
         self.game: Game = Game(data["game"])
-        self.linked: bool = True
+        self.linked: bool = data["self"]["isAccountConnected"]
+        self.unlinked: bool = data["self"]["isAccountConnected"] is False
         self.link_url: str = data["accountLinkURL"]
         # campaign's image actually comes from the game object
         # we use regex to get rid of the dimensions part (ex. ".../game_id-285x380.jpg")
@@ -395,9 +397,15 @@ class DropsCampaign:
 
     @property
     def eligible(self) -> bool:
-        return self.linked or (
-            self._twitch.settings.enable_badges_emotes and self.has_badge_or_emote
-        )
+        has_badge_or_emote = self.has_badge_or_emote
+        badge_emote_allowed = self._twitch.settings.enable_badges_emotes
+        if self._twitch.settings.unlinked_campaigns:
+            return (
+                self.linked
+                or (self.unlinked and not has_badge_or_emote)
+                or (badge_emote_allowed and has_badge_or_emote)
+            )
+        return self.linked or (badge_emote_allowed and has_badge_or_emote)
 
     @cached_property
     def has_badge_or_emote(self) -> bool:
