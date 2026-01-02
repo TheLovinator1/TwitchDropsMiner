@@ -33,6 +33,9 @@ services:
       # Application logs
       - ./logs:/TwitchDropsMiner/logs
       
+      # Response dumps for debugging
+      - ./responses:/TwitchDropsMiner/responses
+      
       # Timezone synchronization
       - /etc/localtime:/etc/localtime:ro
     
