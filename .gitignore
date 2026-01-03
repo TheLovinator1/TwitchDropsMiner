@@ -10,7 +10,6 @@ __pycache__
 /Twitch Drops Miner
 # Dev files
 /.idea
-/.vscode
 /env
 /venv
 /cache
