@@ -5,5 +5,3 @@ Fork of Twitch Drops Miner that saves the Twitch responses.
 ## Credits
 
 This project is a fork of the original [Twitch Drops Miner](https://github.com/DevilXD/TwitchDropsMiner) by DevilXD. All credits for the original code and concept go to DevilXD.
-
-Docker stuff is yoinked from [JourneyDocker/TwitchDropsMiner](https://github.com/JourneyDocker/TwitchDropsMiner) by JourneyOver.
