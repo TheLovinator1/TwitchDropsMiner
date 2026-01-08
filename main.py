@@ -3,27 +3,14 @@ from __future__ import annotations
 # import an additional thing for proper PyInstaller freeze support
 from multiprocessing import freeze_support
 
-from datetime import datetime
-import os
-from time import time
-import pystray
 
 if __name__ == "__main__":
-    if os.getenv('TDM_DOCKER'):
-      for filename in ['healthcheck.connectionerror', 'healthcheck.websocketerror']:
-        with open(f'/tmp/{filename}', 'w') as f:
-          f.write('Container is Healthy')
-      with open('/tmp/healthcheck.heartbeat', 'w') as f:
-        f.write(str(int(time())))
-
-    print(f"{datetime.now().strftime('%Y-%m-%d %X')}: Starting: Twitch Drops Miner")
     freeze_support()
     import io
     import sys
     import signal
     import asyncio
     import logging
-    from logging.handlers import RotatingFileHandler
     import argparse
     import warnings
     import traceback
@@ -72,6 +59,7 @@ if __name__ == "__main__":
         _verbose: int
         _debug_ws: bool
         _debug_gql: bool
+        log: bool
         tray: bool
         dump: bool
 
@@ -116,6 +104,7 @@ if __name__ == "__main__":
     parser.add_argument("--version", action="version", version=f"v{__version__}")
     parser.add_argument("-v", dest="_verbose", action="count", default=0)
     parser.add_argument("--tray", action="store_true")
+    parser.add_argument("--log", action="store_true")
     parser.add_argument("--dump", action="store_true")
     # undocumented debug args
     parser.add_argument(
@@ -155,10 +144,10 @@ if __name__ == "__main__":
             logging.getLogger().addHandler(logging.NullHandler())
         logger = logging.getLogger("TwitchDrops")
         logger.setLevel(settings.logging_level)
-        os.makedirs(LOG_PATH.parent, exist_ok=True)
-        handler = RotatingFileHandler(LOG_PATH, maxBytes=10485760, backupCount=10, encoding='utf-8')
-        handler.setFormatter(FILE_FORMATTER)
-        logger.addHandler(handler)
+        if settings.log:
+            handler = logging.FileHandler(LOG_PATH)
+            handler.setFormatter(FILE_FORMATTER)
+            logger.addHandler(handler)
         logging.getLogger("TwitchDrops.gql").setLevel(settings.debug_gql)
         logging.getLogger("TwitchDrops.websocket").setLevel(settings.debug_ws)
 
@@ -187,18 +176,14 @@ if __name__ == "__main__":
             await client.shutdown()
         if not client.gui.close_requested:
             # user didn't request the closure
-            if pystray.Icon.HAS_MENU:
-                client.gui.tray.change_icon("error")
+            client.gui.tray.change_icon("error")
             client.print(_("status", "terminated"))
             client.gui.status.update(_("gui", "status", "terminated"))
             # notify the user about the closure
             client.gui.grab_attention(sound=True)
-        if os.getenv('TDM_DOCKER'):
-            await client.gui.wait_until_closed()
-        else:
-            client.gui.close()
+        await client.gui.wait_until_closed()
         # save the application state
-        # NOTE: we have to do it after the GUI is closed,
+        # NOTE: we have to do it after wait_until_closed,
         # because the user can alter some settings between app termination and closing the window
         client.save(force=True)
         client.gui.stop()

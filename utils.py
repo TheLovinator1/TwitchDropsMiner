@@ -250,11 +250,8 @@ def json_load(path: Path, defaults: _JSON_T, *, merge: bool = True) -> _JSON_T:
 
 
 def json_save(path: Path, contents: Mapping[Any, Any], *, sort: bool = False) -> None:
-    try:
-        with open(path, 'w', encoding="utf8") as file:
-            json.dump(contents, file, default=_serialize, sort_keys=sort, indent=4)
-    except OSError as e:
-        logger.warning(f"Failed to save {path}: {e}")
+    with open(path, 'w', encoding="utf8") as file:
+        json.dump(contents, file, default=_serialize, sort_keys=sort, indent=4)
 
 
 def webopen(url: URL | str):

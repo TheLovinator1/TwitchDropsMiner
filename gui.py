@@ -28,8 +28,8 @@ if sys.platform == "win32":
     import win32con
     import win32gui
 
-from cache import ImageCache
 from translate import _
+from cache import ImageCache
 from exceptions import MinerException, ExitRequest
 from utils import resource_path, set_root_icon, webopen, Game, _T
 from constants import (
@@ -892,11 +892,11 @@ class ChannelList:
             ],
         )
         self._add_column("game", _("gui", "channels", "headings", "game"), width=50)
-        self._add_column("drops", "🎁", width_template=" 🎁 ")
+        self._add_column("drops", "🎁", width_template="✔")
         self._add_column(
             "viewers", _("gui", "channels", "headings", "viewers"), width_template="1234567"
         )
-        self._add_column("acl_base", "📋", width_template=" 📋 ")
+        self._add_column("acl_base", "📋", width_template="✔")
         self._channel_map: dict[str, Channel] = {}
 
     def _add_column(
@@ -1554,10 +1554,8 @@ class _SettingsVars(TypedDict):
     language: StringVar
     priority_mode: StringVar
     tray_notifications: IntVar
-    unlinked_campaigns: IntVar
     enable_badges_emotes: IntVar
     available_drops_check: IntVar
-
 
 
 class SettingsPanel:
@@ -1591,9 +1589,12 @@ class SettingsPanel:
             "dark_mode": IntVar(master, int(self._settings.dark_mode)),
             "priority_mode": StringVar(master, self.PRIORITY_MODES[priority_mode]),
             "tray_notifications": IntVar(master, self._settings.tray_notifications),
-            "unlinked_campaigns": IntVar(master, self._settings.unlinked_campaigns),
-            "enable_badges_emotes": IntVar(master, self._settings.enable_badges_emotes),
-            "available_drops_check": IntVar(master, self._settings.available_drops_check),
+            "enable_badges_emotes": IntVar(
+                master, int(self._settings.enable_badges_emotes)
+            ),
+            "available_drops_check": IntVar(
+                master, int(self._settings.available_drops_check)
+            ),
         }
         self._game_names: set[str] = set()
         master.rowconfigure(0, weight=1)
@@ -1726,12 +1727,6 @@ class SettingsPanel:
                 "available_drops_check",
                 bool(self._vars["available_drops_check"].get()),
             ),
-        ).grid(column=1, row=irow, sticky="w")
-        ttk.Label(
-            advanced_center, text=_("gui", "settings", "advanced", "unlinked_campaigns")
-        ).grid(column=0, row=(irow := irow + 1), sticky="e")
-        ttk.Checkbutton(
-            advanced_center, variable=self._vars["unlinked_campaigns"], command=self.unlinked_campaigns
         ).grid(column=1, row=irow, sticky="w")
 
         # Priority section
@@ -2007,9 +2002,6 @@ class SettingsPanel:
                 self._settings.priority_mode = value
                 break
 
-    def unlinked_campaigns(self) -> None:
-        self._settings.unlinked_campaigns = bool(self._vars["unlinked_campaigns"].get())
-
     def exclude_add(self) -> None:
         game_name: str = self._exclude_entry.get()
         if not game_name:
@@ -2193,8 +2185,7 @@ class GUIManager:
         # Notebook
         self.tabs = Notebook(self, root_frame)
         # Tray icon - place after notebook so it draws on top of the tabs space
-        if pystray.Icon.HAS_MENU:
-            self.tray = TrayIcon(self, root_frame)
+        self.tray = TrayIcon(self, root_frame)
         # Main tab
         main_frame = ttk.Frame(root_frame, padding=8)
         self.tabs.add_tab(main_frame, name=_("gui", "tabs", "main"))
@@ -2258,9 +2249,8 @@ class GUIManager:
         self.apply_theme(self._twitch.settings.dark_mode)
         # stay hidden in tray if needed, otherwise show the window when everything's ready
         if self._twitch.settings.tray:
-            if pystray.Icon.HAS_MENU:
-                # NOTE: this starts the tray icon thread
-                self._root.after_idle(self.tray.minimize)
+            # NOTE: this starts the tray icon thread
+            self._root.after_idle(self.tray.minimize)
         else:
             self._root.after_idle(self._root.deiconify)
 
@@ -2363,8 +2353,7 @@ class GUIManager:
         """
         Closes the window. Invalidates the logger.
         """
-        if pystray.Icon.HAS_MENU:
-            self.tray.stop()
+        self.tray.stop()
         logging.getLogger("TwitchDrops").removeHandler(self._handler)
         self._root.destroy()
 
@@ -2379,8 +2368,7 @@ class GUIManager:
         self._cache.save(force=force)
 
     def grab_attention(self, *, sound: bool = True):
-        if pystray.Icon.HAS_MENU:
-            self.tray.restore()
+        self.tray.restore()
         self._root.focus_set()
         if sound:
             self._root.bell()
@@ -2393,16 +2381,13 @@ class GUIManager:
     ) -> None:
         self.progress.display(drop, countdown=countdown, subone=subone)  # main tab
         # inventory overview is updated from within drops themselves via change events
-        if pystray.Icon.HAS_MENU:
-            self.tray.update_title(drop)  # tray
+        self.tray.update_title(drop)  # tray
 
     def clear_drop(self):
         self.progress.display(None)
-        if pystray.Icon.HAS_MENU:
-            self.tray.update_title(None)
+        self.tray.update_title(None)
 
     def print(self, message: str):
-        print(f"{datetime.now().strftime('%Y-%m-%d %X')}: {message}")
         # print to our custom output
         self.output.print(message)
 
@@ -2726,7 +2711,6 @@ if __name__ == "__main__":
                 autostart_tray=False,
                 exclude={"Lit Game"},
                 tray_notifications=True,
-                unlinked_campaigns=False,
                 enable_badges_emotes=False,
                 available_drops_check=False,
                 logging_level=LOGGING_LEVELS[0],
@@ -2810,8 +2794,7 @@ if __name__ == "__main__":
             f"{campaign.game.name}\n"
             f"{drop.rewards_text()} ({campaign.claimed_drops}/{campaign.total_drops})"
         )
-        if pystray.Icon.HAS_MENU:
-            gui.tray.notify(claim_text, "Mined Drop")
+        gui.tray.notify(claim_text, "Mined Drop")
 
         # Drop progress
         gui.display_drop(drop, countdown=False)
