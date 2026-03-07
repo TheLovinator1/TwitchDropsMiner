@@ -880,6 +880,15 @@ class Twitch:
         with suppress(asyncio.TimeoutError):
             await asyncio.wait_for(self._watching_restart.wait(), timeout=delay)
 
+    @staticmethod
+    def _next_maintenance_refresh(now: datetime) -> datetime:
+        base = now.replace(second=0, microsecond=0)
+        for minute in (1, 16, 31, 46):
+            candidate = base.replace(minute=minute)
+            if candidate > now:
+                return candidate
+        return (base + timedelta(hours=1)).replace(minute=1)
+
     @task_wrapper(critical=True)
     async def _watch_loop(self) -> NoReturn:
         interval: float = WATCH_INTERVAL.total_seconds()
@@ -948,8 +957,7 @@ class Twitch:
 
     @task_wrapper(critical=True)
     async def _maintenance_task(self) -> None:
-        now = datetime.now(timezone.utc)
-        next_period = now + timedelta(hours=1)
+        next_period = self._next_maintenance_refresh(datetime.now(timezone.utc))
         while True:
             # exit if there's no need to repeat the loop
             now = datetime.now(timezone.utc)
@@ -974,7 +982,7 @@ class Twitch:
             if next_trigger != next_period:
                 logger.log(CALL, "Maintenance task requests channels cleanup")
                 self.change_state(State.CHANNELS_CLEANUP)
-        # this triggers a restart of this task every (up to) 60 minutes
+        # this triggers a restart of this task every (up to) 15 minutes
         logger.log(CALL, "Maintenance task requests a reload")
         self.change_state(State.INVENTORY_FETCH)
 
@@ -1301,11 +1309,11 @@ class Twitch:
             orig_response = response_json
 
             # Save raw response payload to a timestamped JSON file
-            # Example path: responses/20250812T153045_123456.json
+            # Example path: /mnt/Fourteen/Responses/pending/20250812T153045_123456.json
             try:
-                os.makedirs("responses", exist_ok=True)
+                os.makedirs("/mnt/Fourteen/Responses/pending", exist_ok=True)
                 ts: str = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
-                with open(f"responses/{ts}.json", "w", encoding="utf-8") as f:
+                with open(f"/mnt/Fourteen/Responses/pending/{ts}.json", "w", encoding="utf-8") as f:
                     json.dump(orig_response, f, ensure_ascii=False, indent=2)
 
             except Exception as e:  # pragma: no cover - non-critical diagnostics
