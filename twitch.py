@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 import json
 import asyncio
@@ -47,7 +46,7 @@ from constants import (
     DUMP_PATH,
     COOKIES_PATH,
     MAX_CHANNELS,
-    GQL_OPERATIONS,
+    GQL_QUERIES,
     WATCH_INTERVAL,
     State,
     ClientType,
@@ -846,7 +845,7 @@ class Twitch:
                     # NOTE: we need to sort the channels every time because one channel
                     # can end up streaming any game - channels aren't game-tied
                     for channel in sorted(channels.values(), key=self.get_priority):
-                        if self.can_watch(channel) and self.should_switch(channel):
+                        if self.should_switch(channel):
                             new_watching = channel
                             break
                 watching_channel = self.watching_channel.get_with_default(None)
@@ -916,7 +915,7 @@ class Twitch:
                 # Solution 1: use GQL to query for the currently mined drop status
                 try:
                     context = await self.gql_request(
-                        GQL_OPERATIONS["CurrentDrop"].with_variables(
+                        GQL_QUERIES["CurrentDrop"].with_variables(
                             {"channelID": str(channel.id)}
                         )
                     )
@@ -957,7 +956,8 @@ class Twitch:
 
     @task_wrapper(critical=True)
     async def _maintenance_task(self) -> None:
-        next_period = self._next_maintenance_refresh(datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc)
+        next_period = now + timedelta(hours=1)
         while True:
             # exit if there's no need to repeat the loop
             now = datetime.now(timezone.utc)
@@ -1012,8 +1012,10 @@ class Twitch:
         """
         Determines if the given channel qualifies as a switch candidate.
         """
+        if not self.can_watch(channel):
+            return False
         watching_channel = self.watching_channel.get_with_default(None)
-        if watching_channel is None:
+        if watching_channel is None or not self.can_watch(watching_channel):
             return True
         channel_order = self.get_priority(channel)
         watching_order = self.get_priority(watching_channel)
@@ -1108,7 +1110,7 @@ class Twitch:
         if stream_before is None:
             if stream_after is not None:
                 # Channel going ONLINE
-                if self.can_watch(channel) and self.should_switch(channel):
+                if self.should_switch(channel):
                     # we can watch the channel, and we should
                     self.print(_("status", "goes_online").format(channel=channel.name))
                     self.watch(channel)
@@ -1148,8 +1150,8 @@ class Twitch:
                     f"(🎁: {stream_before.drops_enabled and '✔' or '❌'} -> "
                     f"{stream_after.drops_enabled and '✔' or '❌'})"
                 )
-                if self.can_watch(channel) and self.should_switch(channel):
-                    # ... and we can and should watch it
+                if self.should_switch(channel):
+                    # ... and we should watch it
                     self.watch(channel)
         channel.display()
 
@@ -1182,7 +1184,7 @@ class Twitch:
             if watching_channel is not None:
                 for attempt in range(8):
                     context = await self.gql_request(
-                        GQL_OPERATIONS["CurrentDrop"].with_variables(
+                        GQL_QUERIES["CurrentDrop"].with_variables(
                             {"channelID": str(watching_channel.id)}
                         )
                     )
@@ -1222,7 +1224,7 @@ class Twitch:
             ):
                 self.change_state(State.INVENTORY_FETCH)
                 await self.gql_request(
-                    GQL_OPERATIONS["NotificationsDelete"].with_variables(
+                    GQL_QUERIES["NotificationsDelete"].with_variables(
                         {"input": {"id": data["id"]}}
                     )
                 )
@@ -1273,7 +1275,9 @@ class Twitch:
                 # connection problems, retry
                 if backoff.steps > 1:
                     # just so that quick retries that sometimes happen, aren't shown
-                    self.print(_("error", "no_connection").format(seconds=round(delay)))
+                    self.print(
+                        _("error", "no_connection").format(seconds=round(delay), url=str(url))
+                    )
             finally:
                 if response is not None:
                     response.release()
@@ -1334,8 +1338,8 @@ class Twitch:
                             if (
                                 single_retry
                                 and error_dict["message"] in (
-                                    "service error"
-                                    "PersistedQueryNotFound"
+                                    "service error",
+                                    "PersistedQueryNotFound",
                                 )
                             ):
                                 logger.error(
@@ -1406,7 +1410,7 @@ class Twitch:
         auth_state = await self.get_auth()
         response_list: list[JsonType] = await self.gql_request(
             [
-                GQL_OPERATIONS["CampaignDetails"].with_variables(
+                GQL_QUERIES["CampaignDetails"].with_variables(
                     {"channelLogin": str(auth_state.user_id), "dropID": cid}
                 )
                 for cid in campaign_ids
@@ -1422,7 +1426,7 @@ class Twitch:
         status_update = self.gui.status.update
         status_update(_("gui", "status", "fetching_inventory"))
         # fetch in-progress campaigns (inventory)
-        response = await self.gql_request(GQL_OPERATIONS["Inventory"])
+        response = await self.gql_request(GQL_QUERIES["Inventory"])
         inventory: JsonType = response["data"]["currentUser"]["inventory"]
         ongoing_campaigns: list[JsonType] = inventory["dropCampaignsInProgress"] or []
         # this contains claimed benefit edge IDs, not drop IDs
@@ -1431,7 +1435,7 @@ class Twitch:
         }
         inventory_data: dict[str, JsonType] = {c["id"]: c for c in ongoing_campaigns}
         # fetch general available campaigns data (campaigns)
-        response = await self.gql_request(GQL_OPERATIONS["Campaigns"])
+        response = await self.gql_request(GQL_QUERIES["Campaigns"])
         available_list: list[JsonType] = response["data"]["currentUser"]["dropCampaigns"] or []
         applicable_statuses = ("ACTIVE", "UPCOMING")
         available_campaigns: dict[str, JsonType] = {
@@ -1565,7 +1569,7 @@ class Twitch:
             filters.append("DROPS_ENABLED")
         try:
             response = await self.gql_request(
-                GQL_OPERATIONS["GameDirectory"].with_variables({
+                GQL_QUERIES["GameDirectory"].with_variables({
                     "limit": limit,
                     "slug": game.slug,
                     "options": {
@@ -1617,7 +1621,7 @@ class Twitch:
         acl_available_drops_map: dict[int, list[JsonType]] = {}
         if self.settings.available_drops_check:
             available_gql_ops: list[GQLOperation] = [
-                GQL_OPERATIONS["AvailableDrops"].with_variables({"channelID": str(channel_id)})
+                GQL_QUERIES["AvailableDrops"].with_variables({"channelID": str(channel_id)})
                 for channel_id, channel_data in acl_streams_map.items()
                 if channel_data["stream"] is not None  # only do this for ONLINE channels
             ]

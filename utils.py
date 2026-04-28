@@ -82,7 +82,7 @@ def lock_file(path: Path) -> tuple[bool, io.TextIOWrapper]:
         except Exception:
             return False, file
         return True, file
-    if sys.platform == "linux":
+    if sys.platform in ("linux", "darwin"):
         import fcntl
         try:
             fcntl.lockf(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -105,6 +105,10 @@ def timestamp(string: str) -> datetime:
         return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
     except ValueError:
         return datetime.strptime(string, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def isonow() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", 'Z')
 
 
 CHARS_ASCII = string.ascii_letters + string.digits
