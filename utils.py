@@ -1,34 +1,46 @@
 from __future__ import annotations
 
-import io
-import os
-import re
-import sys
-import json
-import random
-import string
 import asyncio
+import json
 import logging
+import os
+import random
+import re
+import string
+import sys
 import traceback
 import webbrowser
-import tkinter as tk
-from enum import Enum
-from pathlib import Path
-from functools import wraps
+from collections import OrderedDict
+from collections import abc
+from collections.abc import Callable
+from collections.abc import Mapping
 from contextlib import suppress
+from datetime import UTC
+from datetime import datetime
+from enum import Enum
 from functools import cached_property
-from datetime import datetime, timezone
-from collections import abc, OrderedDict
-from typing import Any, Literal, Callable, Generic, Mapping, TypeVar, ParamSpec, cast
+from functools import wraps
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import Literal
+from typing import ParamSpec
+from typing import TypeVar
+from typing import cast
 
-from yarl import URL
-from PIL.ImageTk import PhotoImage
 from PIL import Image as Image_module
+from PIL.ImageTk import PhotoImage
+from yarl import URL
 
-from exceptions import ExitRequest, ReloadRequest
-from constants import IS_PACKAGED, JsonType, PriorityMode
-from constants import _resource_path as resource_path  # noqa
+from constants import IS_PACKAGED
+from constants import JsonType
+from constants import PriorityMode
+from exceptions import ExitRequest
+from exceptions import ReloadRequest
 
+if TYPE_CHECKING:
+    import io
+    import tkinter as tk
+    from pathlib import Path
 
 _T = TypeVar("_T")  # type
 _D = TypeVar("_D")  # default
@@ -45,7 +57,7 @@ def set_root_icon(root: tk.Tk, image_path: Path | str) -> None:
     root._icon_image = icon_photo  # type: ignore[attr-defined]
 
 
-async def first_to_complete(coros: abc.Iterable[abc.Coroutine[Any, Any, _T]]) -> _T:
+async def first_to_complete[T](coros: abc.Iterable[abc.Coroutine[Any, Any, _T]]) -> _T:
     # In Python 3.11, we need to explicitly wrap awaitables
     tasks = [asyncio.ensure_future(coro) for coro in coros]
     done: set[asyncio.Task[Any]]
@@ -56,34 +68,35 @@ async def first_to_complete(coros: abc.Iterable[abc.Coroutine[Any, Any, _T]]) ->
     return await next(iter(done))
 
 
-def chunk(to_chunk: abc.Iterable[_T], chunk_length: int) -> abc.Generator[list[_T], None, None]:
+def chunk[T](to_chunk: abc.Iterable[_T], chunk_length: int) -> abc.Generator[list[_T]]:
     list_to_chunk = list(to_chunk)
     for i in range(0, len(list_to_chunk), chunk_length):
-        yield list_to_chunk[i:i + chunk_length]
+        yield list_to_chunk[i : i + chunk_length]
 
 
 def format_traceback(exc: BaseException, **kwargs: Any) -> str:
-    """
-    Like `traceback.print_exc` but returns a string. Uses the passed-in exception.
+    """Like `traceback.print_exc` but returns a string. Uses the passed-in exception.
     Any additional `**kwargs` are passed to the underlaying `traceback.format_exception`.
     """
-    return ''.join(traceback.format_exception(type(exc), exc, **kwargs))
+    return "".join(traceback.format_exception(type(exc), exc, **kwargs))
 
 
 def lock_file(path: Path) -> tuple[bool, io.TextIOWrapper]:
-    file = path.open('w', encoding="utf8")
-    file.write('ツ')
+    file = path.open("w", encoding="utf8")
+    file.write("ツ")
     file.flush()
     if sys.platform == "win32":
         import msvcrt
+
         try:
             # we need to lock at least one byte for this to work
             msvcrt.locking(file.fileno(), msvcrt.LK_NBLCK, max(path.stat().st_size, 1))
         except Exception:
             return False, file
         return True, file
-    if sys.platform in ("linux", "darwin"):
+    if sys.platform in {"linux", "darwin"}:
         import fcntl
+
         try:
             fcntl.lockf(file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except Exception:
@@ -94,21 +107,19 @@ def lock_file(path: Path) -> tuple[bool, io.TextIOWrapper]:
 
 
 def json_minify(data: JsonType | list[JsonType]) -> str:
-    """
-    Returns minified JSON for payload usage.
-    """
-    return json.dumps(data, separators=(',', ':'))
+    """Returns minified JSON for payload usage."""
+    return json.dumps(data, separators=(",", ":"))
 
 
 def timestamp(string: str) -> datetime:
     try:
-        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=UTC)
     except ValueError:
-        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        return datetime.strptime(string, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
 def isonow() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", 'Z')
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 CHARS_ASCII = string.ascii_letters + string.digits
@@ -117,24 +128,22 @@ CHARS_HEX_UPPER = string.digits + "ABCDEF"
 
 
 def create_nonce(chars: str, length: int) -> str:
-    return ''.join(random.choices(chars, k=length))
+    return "".join(random.choices(chars, k=length))
 
 
-def deduplicate(iterable: abc.Iterable[_T]) -> list[_T]:
+def deduplicate[T](iterable: abc.Iterable[_T]) -> list[_T]:
     return list(OrderedDict.fromkeys(iterable).keys())
 
 
-def task_wrapper(
-    afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]] | None = None, *, critical: bool = False
-):
+def task_wrapper[**P, T](afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]] | None = None, *, critical: bool = False):
     def decorator(
-        afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]]
+        afunc: abc.Callable[_P, abc.Coroutine[Any, Any, _T]],
     ) -> abc.Callable[_P, abc.Coroutine[Any, Any, _T]]:
         @wraps(afunc)
-        async def wrapper(*args: _P.args, **kwargs: _P.kwargs):
+        async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> None:
             try:
                 await afunc(*args, **kwargs)
-            except (ExitRequest, ReloadRequest):
+            except ExitRequest, ReloadRequest:
                 pass
             except Exception:
                 logger.exception(f"Exception in {afunc.__name__} task")
@@ -143,7 +152,8 @@ def task_wrapper(
                     # there isn't an easy and sure way to obtain the Twitch instance here,
                     # but we can improvise finding it
                     from twitch import Twitch  # cyclic import
-                    probe = args and args[0] or None  # extract from 'self' arg
+
+                    probe = (args and args[0]) or None  # extract from 'self' arg
                     if isinstance(probe, Twitch):
                         probe.close()
                     elif probe is not None:
@@ -151,16 +161,16 @@ def task_wrapper(
                         if isinstance(probe, Twitch):
                             probe.close()
                 raise  # raise up to the wrapping task
+
         return wrapper
+
     if afunc is None:
         return decorator
     return decorator(afunc)
 
 
-def invalidate_cache(instance, *attrnames):
-    """
-    To be used to invalidate `functools.cached_property`.
-    """
+def invalidate_cache(instance, *attrnames) -> None:
+    """To be used to invalidate `functools.cached_property`."""
     for name in attrnames:
         with suppress(AttributeError):
             delattr(instance, name)
@@ -172,7 +182,7 @@ def _serialize(obj: Any) -> Any:
     if isinstance(obj, datetime):
         if obj.tzinfo is None:
             # assume naive objects are UTC
-            obj = obj.replace(tzinfo=timezone.utc)
+            obj = obj.replace(tzinfo=UTC)
         d = obj.timestamp()
     elif isinstance(obj, set):
         d = list(obj)
@@ -196,7 +206,7 @@ SERIALIZE_ENV: dict[str, Callable[[Any], object]] = {
     "set": set,
     "URL": URL,
     "PriorityMode": PriorityMode,
-    "datetime": lambda d: datetime.fromtimestamp(d, timezone.utc),
+    "datetime": lambda d: datetime.fromtimestamp(d, UTC),
 }
 
 
@@ -218,8 +228,7 @@ def _deserialize(obj: JsonType) -> Any:
         obj_type = obj["__type"]
         if obj_type in SERIALIZE_ENV:
             return SERIALIZE_ENV[obj_type](obj["data"])
-        else:
-            return _MISSING
+        return _MISSING
     return obj
 
 
@@ -236,42 +245,42 @@ def merge_json(obj: JsonType, template: Mapping[Any, Any]) -> None:
             assert isinstance(template[k], dict)
             merge_json(v, template[k])
     # ensure the object is not missing any keys
-    for k in template.keys():
+    for k in template:
         if k not in obj:
             obj[k] = template[k]
 
 
-def json_load(path: Path, defaults: _JSON_T, *, merge: bool = True) -> _JSON_T:
+def json_load[JSON_T: Mapping[Any, Any]](path: Path, defaults: _JSON_T, *, merge: bool = True) -> _JSON_T:
     new_path: Path = path.with_name(f"{path.name}.new")
     combined: JsonType | None = None
     # try new file first
     if new_path.exists():
         try:
-            with new_path.open('r', encoding="utf8") as file:
+            with new_path.open("r", encoding="utf8") as file:
                 combined = _remove_missing(json.load(file, object_hook=_deserialize))
         except json.JSONDecodeError:
             # remove invalid file
             new_path.unlink()
     # try the old file
     if combined is None and path.exists():
-        with path.open('r', encoding="utf8") as file:
+        with path.open("r", encoding="utf8") as file:
             combined = _remove_missing(json.load(file, object_hook=_deserialize))
     # handle defaults and merging
     if combined is None:
         combined = dict(defaults)  # always make a copy of defaults
     elif merge:
         merge_json(combined, dict(defaults))
-    return cast(_JSON_T, combined)
+    return cast("_JSON_T", combined)
 
 
 def json_save(path: Path, contents: Mapping[Any, Any], *, sort: bool = False) -> None:
     new_path: Path = path.with_name(f"{path.name}.new")
-    with new_path.open('w', encoding="utf8") as file:
+    with new_path.open("w", encoding="utf8") as file:
         json.dump(contents, file, default=_serialize, sort_keys=sort, indent=4)
     new_path.replace(path)
 
 
-def webopen(url: URL | str):
+def webopen(url: URL | str) -> None:
     url_str = str(url)
     if IS_PACKAGED and sys.platform == "linux":
         # https://pyinstaller.org/en/stable/
@@ -305,9 +314,10 @@ class ExponentialBackoff:
         variance: float | tuple[float, float] = 0.1,
         shift: float = 0,
         maximum: float = 300,
-    ):
+    ) -> None:
         if base <= 1:
-            raise ValueError("Base has to be greater than 1")
+            msg = "Base has to be greater than 1"
+            raise ValueError(msg)
         self.steps: int = 0
         self.base: float = float(base)
         self.shift: float = float(shift)
@@ -328,11 +338,7 @@ class ExponentialBackoff:
         return self
 
     def __next__(self) -> float:
-        value: float = (
-            pow(self.base, self.steps)
-            * random.uniform(self.variance_min, self.variance_max)
-            + self.shift
-        )
+        value: float = pow(self.base, self.steps) * random.uniform(self.variance_min, self.variance_max) + self.shift
         if value > self.maximum:
             return self.maximum
         # NOTE: variance can cause the returned value to be lower than the previous one already,
@@ -346,7 +352,7 @@ class ExponentialBackoff:
 
 
 class RateLimiter:
-    def __init__(self, *, capacity: int, window: int):
+    def __init__(self, *, capacity: int, window: int) -> None:
         self.total: int = 0
         self.concurrent: int = 0
         self.window: int = window
@@ -390,8 +396,8 @@ class RateLimiter:
         await self._reset()
 
 
-class AwaitableValue(Generic[_T]):
-    def __init__(self):
+class AwaitableValue[T]:
+    def __init__(self) -> None:
         self._value: _T
         self._event = asyncio.Event()
 
@@ -421,7 +427,7 @@ class AwaitableValue(Generic[_T]):
 class Game:
     SPECIAL_GAME_IDS: set[int] = {509663, 509672}
 
-    def __init__(self, data: JsonType):
+    def __init__(self, data: JsonType) -> None:
         self.id: int = int(data["id"])
         self.name: str = data.get("displayName") or data["name"]
         if "slug" in data:
@@ -443,16 +449,13 @@ class Game:
 
     @cached_property
     def slug(self) -> str:
-        """
-        Converts the game name into a slug, useable for the GQL API.
-        """
+        """Converts the game name into a slug, useable for the GQL API."""
         # remove specific characters
-        slug_text = re.sub(r'\'', '', self.name.lower())
+        slug_text = re.sub(r"\'", "", self.name.lower())
         # remove non alpha-numeric characters
-        slug_text = re.sub(r'\W+', '-', slug_text)
+        slug_text = re.sub(r"\W+", "-", slug_text)
         # strip and collapse dashes
-        slug_text = re.sub(r'-{2,}', '-', slug_text.strip('-'))
-        return slug_text
+        return re.sub(r"-{2,}", "-", slug_text.strip("-"))
 
     def is_special(self) -> bool:
         return self.id in self.SPECIAL_GAME_IDS

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from collections import abc
-from typing import Any, TypedDict, TYPE_CHECKING
+from typing import TYPE_CHECKING
+from typing import Any
+from typing import TypedDict
 
+from constants import DEFAULT_LANG
+from constants import IS_PACKAGED
+from constants import LANG_PATH
 from exceptions import MinerException
-from utils import json_load, json_save
-from constants import IS_PACKAGED, LANG_PATH, DEFAULT_LANG
+from utils import json_load
+from utils import json_save
 
 if TYPE_CHECKING:
-    from typing_extensions import NotRequired
+    from collections import abc
+    from typing import NotRequired
 
 
 class StatusMessages(TypedDict):
@@ -252,13 +257,9 @@ default_translation: Translation = {
         ),
         "chrome": {
             "startup": "Opening Chrome...",
-            "login_to_complete": (
-                "Complete the login procedure manually by pressing the Login button again."
-            ),
+            "login_to_complete": ("Complete the login procedure manually by pressing the Login button again."),
             "no_token": "No authorization token could be found.",
-            "closed_window": (
-                "The Chrome window was closed before the login procedure could be completed."
-            ),
+            "closed_window": ("The Chrome window was closed before the login procedure could be completed."),
         },
         "error_code": "Login error code: {error_code}",
         "incorrect_login_pass": "Incorrect username or password.",
@@ -425,19 +426,19 @@ default_translation: Translation = {
                 "2. Ensure your Twitch account is linked to all campaigns "
                 "you're interested in mining.\n"
                 "3. If you're interested in mining everything possible, "
-                "change the Priority Mode to anything other than \"Priority list only\" "
-                "and press on \"Reload\".\n"
-                "4. If you want to mine specific games first, use the \"Priority\" list "
+                'change the Priority Mode to anything other than "Priority list only" '
+                'and press on "Reload".\n'
+                '4. If you want to mine specific games first, use the "Priority" list '
                 "to set up an ordered list of games of your choice. "
                 "Games from the top of the list will be attempted to be mined first, "
                 "before the ones lower down the list.\n"
-                "5. Keep the \"Priority mode\" selected as \"Priority list only\", "
+                '5. Keep the "Priority mode" selected as "Priority list only", '
                 "to avoid mining games that are not on the priority list. "
                 "Or not - it's up to you.\n"
-                "6. Use the \"Exclude\" list to tell the application "
+                '6. Use the "Exclude" list to tell the application '
                 "which games should never be mined.\n"
                 "7. Changing the contents of either of the lists, or changing "
-                "the \"Priority mode\", requires you to press on \"Reload\" "
+                'the "Priority mode", requires you to press on "Reload" '
                 "for the changes to take an effect."
             ),
             "invalidate": {
@@ -475,35 +476,35 @@ class Translator:
     def current(self) -> str:
         return self._translation["language_name"]
 
-    def set_language(self, language: str):
+    def set_language(self, language: str) -> None:
         if language not in self._langs:
-            raise ValueError("Unrecognized language")
-        elif self._translation["language_name"] == language:
+            msg = "Unrecognized language"
+            raise ValueError(msg)
+        if self._translation["language_name"] == language:
             # same language as loaded selected
             return
-        elif language == DEFAULT_LANG:
+        if language == DEFAULT_LANG:
             # default language selected - use the memory value
             self._translation = default_translation.copy()
         else:
-            self._translation = json_load(
-                LANG_PATH.joinpath(f"{language}.json"), default_translation
-            )
+            self._translation = json_load(LANG_PATH.joinpath(f"{language}.json"), default_translation)
             if "language_name" in self._translation:
-                raise ValueError("Translations cannot define 'language_name'")
+                msg = "Translations cannot define 'language_name'"
+                raise ValueError(msg)
         self._translation["language_name"] = language
 
     def __call__(self, *path: str) -> str:
         if not path:
-            raise ValueError("Language path expected")
+            msg = "Language path expected"
+            raise ValueError(msg)
         v: Any = self._translation
         try:
             for key in path:
                 v = v[key]
         except KeyError:
             # this can only really happen for the default translation
-            raise MinerException(
-                f"{self.current} translation is missing the '{' -> '.join(path)}' translation key"
-            )
+            msg = f"{self.current} translation is missing the '{' -> '.join(path)}' translation key"
+            raise MinerException(msg)
         return v
 
 

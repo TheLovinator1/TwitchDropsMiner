@@ -3,32 +3,40 @@ from __future__ import annotations
 # import an additional thing for proper PyInstaller freeze support
 from multiprocessing import freeze_support
 
+from constants import _resource_path
 
 if __name__ == "__main__":
     freeze_support()
-    import io
-    import os
-    import sys
-    import signal
-    import asyncio
-    import logging
     import argparse
-    import warnings
-    import traceback
+    import asyncio
+    import io
+    import logging
+    import os
+    import signal
+    import sys
     import tkinter as tk
+    import traceback
+    import warnings
     from tkinter import messagebox
-    from typing import NoReturn, TYPE_CHECKING
+    from typing import TYPE_CHECKING
+    from typing import NoReturn
 
     import truststore
+
     truststore.inject_into_ssl()
 
+    from constants import FILE_FORMATTER
+    from constants import LOCK_PATH
+    from constants import LOG_PATH
+    from constants import LOGGING_LEVELS
+    from constants import SELF_PATH
+    from exceptions import CaptchaRequired
+    from settings import Settings
     from translate import _
     from twitch import Twitch
-    from settings import Settings
+    from utils import lock_file
+    from utils import set_root_icon
     from version import __version__
-    from exceptions import CaptchaRequired
-    from utils import lock_file, resource_path, set_root_icon
-    from constants import LOGGING_LEVELS, SELF_PATH, FILE_FORMATTER, LOG_PATH, LOCK_PATH
 
     if TYPE_CHECKING:
         from _typeshed import SupportsWrite
@@ -38,10 +46,7 @@ if __name__ == "__main__":
     # import tracemalloc
     # tracemalloc.start(3)
 
-    if sys.version_info < (3, 10):
-        raise RuntimeError("Python 3.10 or higher is required")
-
-    # Suppress X11 Input Method registration on Linux to prevent 
+    # Suppress X11 Input Method registration on Linux to prevent
     # XWayland/Mutter lockups during heavy Tkinter layout updates.
     if sys.platform.startswith("linux") and "XMODIFIERS" not in os.environ:
         os.environ["XMODIFIERS"] = "@im=none"
@@ -76,14 +81,13 @@ if __name__ == "__main__":
 
         @property
         def debug_ws(self) -> int:
-            """
-            If the debug flag is True, return DEBUG.
+            """If the debug flag is True, return DEBUG.
             If the main logging level is DEBUG, return INFO to avoid seeing raw messages.
             Otherwise, return NOTSET to inherit the global logging level.
             """
             if self._debug_ws:
                 return logging.DEBUG
-            elif self._verbose >= 4:
+            if self._verbose >= 4:
                 return logging.INFO
             return logging.NOTSET
 
@@ -91,7 +95,7 @@ if __name__ == "__main__":
         def debug_gql(self) -> int:
             if self._debug_gql:
                 return logging.DEBUG
-            elif self._verbose >= 4:
+            if self._verbose >= 4:
                 return logging.INFO
             return logging.NOTSET
 
@@ -101,7 +105,7 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.overrideredirect(True)
     root.withdraw()
-    set_root_icon(root, resource_path("icons/pickaxe.ico"))
+    set_root_icon(root, _resource_path("icons/pickaxe.ico"))
     root.update()
     parser = Parser(
         SELF_PATH.name,
@@ -113,20 +117,15 @@ if __name__ == "__main__":
     parser.add_argument("--log", action="store_true")
     parser.add_argument("--dump", action="store_true")
     # undocumented debug args
-    parser.add_argument(
-        "--debug-ws", dest="_debug_ws", action="store_true", help=argparse.SUPPRESS
-    )
-    parser.add_argument(
-        "--debug-gql", dest="_debug_gql", action="store_true", help=argparse.SUPPRESS
-    )
+    parser.add_argument("--debug-ws", dest="_debug_ws", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--debug-gql", dest="_debug_gql", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(namespace=ParsedArgs())
     # load settings
     try:
         settings = Settings(args)
     except Exception:
         messagebox.showerror(
-            "Settings error",
-            f"There was an error while loading the settings file:\n\n{traceback.format_exc()}"
+            "Settings error", f"There was an error while loading the settings file:\n\n{traceback.format_exc()}"
         )
         sys.exit(4)
     # dummy window isn't needed anymore
@@ -135,7 +134,7 @@ if __name__ == "__main__":
     del root, parser
 
     # client run
-    async def main():
+    async def main() -> None:
         # set language
         try:
             _.set_language(settings.language)

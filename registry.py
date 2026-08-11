@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import winreg as reg
+from enum import Enum
+from enum import Flag
+from typing import TYPE_CHECKING
 from typing import Any
-from enum import Enum, Flag
-from collections.abc import Generator
+from typing import Self
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 class RegistryError(Exception):
@@ -58,8 +63,8 @@ class ValueType(Enum):
 
 
 class RegistryKey:
-    def __init__(self, path: str, *, read_only: bool = False):
-        main_key, _, path = path.replace('/', '\\').partition('\\')
+    def __init__(self, path: str, *, read_only: bool = False) -> None:
+        main_key, _, path = path.replace("/", "\\").partition("\\")
         self.main_key = MainKey[main_key]
         self.path = path
         access_flags = Access.KEY_QUERY_VALUE
@@ -67,7 +72,7 @@ class RegistryKey:
             access_flags |= Access.KEY_SET_VALUE
         self._handle = reg.OpenKey(self.main_key.value, path, access=access_flags.value)
 
-    def __enter__(self) -> RegistryKey:
+    def __enter__(self) -> Self:
         return self
 
     def __exit__(self, exc_type, exc, tb):
@@ -94,8 +99,8 @@ class RegistryKey:
             return False
         return True
 
-    def values(self) -> Generator[tuple[str, ValueType, Any], None, None]:
-        len_keys, len_values, last_modified = reg.QueryInfoKey(self._handle)
+    def values(self) -> Generator[tuple[str, ValueType, Any]]:
+        _len_keys, len_values, _last_modified = reg.QueryInfoKey(self._handle)
         for i in range(len_values):
             try:
                 name, value, value_type = reg.EnumValue(self._handle, i)
@@ -108,5 +113,5 @@ if __name__ == "__main__":
     with RegistryKey("HKCU/Software/Microsoft/Windows/CurrentVersion/Run") as key:
         # key.get("test")
         # key.set("test", ValueType.REG_SZ, "test\\path")
-        for name, value_type, value in key.values():
-            print(name, value_type, value)
+        for _name, _value_type, _value in key.values():
+            pass
