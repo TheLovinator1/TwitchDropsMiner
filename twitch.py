@@ -1268,11 +1268,11 @@ class Twitch:
             orig_response = response_json
 
             # Save raw response payload to a timestamped JSON file
-            # Example path: Z:/Responses/pending/20250812T153045_123456.json
+            # Example path: /mnt/fourteen/Responses/pending/20250812T153045_123456.json
             try:
-                pathlib.Path("Z:/Responses/pending").mkdir(exist_ok=True, parents=True)
+                pathlib.Path("/mnt/fourteen/Responses/pending/").mkdir(exist_ok=True, parents=True)
                 ts: str = datetime.now().strftime("%Y%m%dT%H%M%S_%f")
-                with pathlib.Path(f"Z:/Responses/pending/{ts}.json").open("w", encoding="utf-8") as f:
+                with pathlib.Path(f"/mnt/fourteen/Responses/pending/{ts}.json").open("w", encoding="utf-8") as f:
                     json.dump(orig_response, f, ensure_ascii=False, indent=2)
 
             except Exception as e:  # pragma: no cover - non-critical diagnostics
