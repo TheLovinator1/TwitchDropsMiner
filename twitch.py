@@ -886,12 +886,12 @@ class Twitch:
                 self.stop_watching()
                 continue
             # logger.log(CALL, f"Sending watch payload to: {channel.name}")
-            succeeded: bool = await channel.send_watch()
             last_sent: float = time()
+            succeeded: bool = await channel.send_watch()
             if not succeeded:
                 logger.log(CALL, f"Watch requested failed for channel: {channel.name}")
-            # wait ~20 seconds for a progress update
-            await asyncio.sleep(20)
+            # wait ~15 seconds for a progress update
+            await asyncio.sleep(15 - min(time() - last_sent, 15))
             if self.gui.progress.minute_almost_done():
                 # If the previous update was more than ~60s ago, and the progress tracker
                 # isn't counting down anymore, that means Twitch has temporarily
@@ -941,7 +941,7 @@ class Twitch:
     @task_wrapper(critical=True)
     async def _maintenance_task(self) -> None:
         now = datetime.now(UTC)
-        next_period = now + timedelta(hours=1)
+        next_period = self._next_maintenance_refresh(datetime.now(UTC))
         while True:
             # exit if there's no need to repeat the loop
             now = datetime.now(UTC)
@@ -1308,6 +1308,7 @@ class Twitch:
                                 break
                             if error_dict["message"] in {
                                 "service timeout",
+                                "request cancelled",
                                 "service unavailable",
                                 "context deadline exceeded",
                             }:

@@ -3,7 +3,7 @@ from __future__ import annotations
 # import an additional thing for proper PyInstaller freeze support
 from multiprocessing import freeze_support
 
-from constants import _resource_path
+from constants import resource_path
 
 if __name__ == "__main__":
     freeze_support()
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     root = tk.Tk()
     root.overrideredirect(True)
     root.withdraw()
-    set_root_icon(root, _resource_path("icons/pickaxe.ico"))
+    set_root_icon(root, resource_path("icons/pickaxe.ico"))
     root.update()
     parser = Parser(
         SELF_PATH.name,

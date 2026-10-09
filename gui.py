@@ -57,7 +57,7 @@ from constants import WINDOW_TITLE
 from constants import WS_TOPICS_LIMIT
 from constants import PriorityMode
 from constants import State
-from constants import _resource_path
+from constants import resource_path
 from exceptions import ExitRequest
 from exceptions import MinerException
 from translate import _
@@ -1073,11 +1073,11 @@ class TrayIcon:
         self._manager = manager
         self.icon: pystray.Icon | None = None  # type: ignore[unused-ignore]
         self._icon_images: dict[str, Image_module.Image] = {
-            "pickaxe": Image_module.open(_resource_path("icons/pickaxe.ico")),
-            "active": Image_module.open(_resource_path("icons/active.ico")),
-            "idle": Image_module.open(_resource_path("icons/idle.ico")),
-            "error": Image_module.open(_resource_path("icons/error.ico")),
-            "maint": Image_module.open(_resource_path("icons/maint.ico")),
+            "pickaxe": Image_module.open(resource_path("icons/pickaxe.ico")),
+            "active": Image_module.open(resource_path("icons/active.ico")),
+            "idle": Image_module.open(resource_path("icons/idle.ico")),
+            "error": Image_module.open(resource_path("icons/error.ico")),
+            "maint": Image_module.open(resource_path("icons/maint.ico")),
         }
         self._icon_state: str = "pickaxe"
         self._button = ttk.Button(master, command=self.minimize, text=_("gui", "tray", "minimize"))
@@ -2131,7 +2131,7 @@ class GUIManager:
         # withdraw immediately to prevent the window from flashing
         self._root.withdraw()
         # root.resizable(False, True)
-        set_root_icon(root, _resource_path("icons/pickaxe.ico"))
+        set_root_icon(root, resource_path("icons/pickaxe.ico"))
         root.title(WINDOW_TITLE)  # window title
         root.bind_all("<KeyPress-Escape>", self.unfocus)  # pressing ESC unfocuses selection
         # Image cache for displaying images

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import io
 import json
 from datetime import UTC
@@ -103,8 +102,12 @@ class ImageCache:
                 if img_hash in self._images:
                     image = self._images[img_hash]
                 else:
-                    with contextlib.suppress(FileNotFoundError, Image_module.UnidentifiedImageError):
-                        self._images[img_hash] = image = Image_module.open(CACHE_PATH / img_hash)
+                    try:
+                        loaded = Image_module.open(CACHE_PATH / img_hash)
+                        loaded.load()  # force full decode so broken data is caught here
+                        self._images[img_hash] = image = loaded
+                    except FileNotFoundError, Image_module.UnidentifiedImageError, OSError:
+                        pass
             if image is None:
                 try:
                     async with self._twitch.request("GET", url) as response:
@@ -128,6 +131,10 @@ class ImageCache:
         if photo_key in self._photos:
             return self._photos[photo_key]
         if image.size != size:
-            image = image.resize(size, Image_module.Palette.ADAPTIVE)
+            try:
+                image = image.resize(size, Image_module.Resampling.LANCZOS)
+            except OSError:
+                # broken image data surfaced during resize; fall back to blank placeholder
+                image = Image_module.new("RGB", size, (255, 255, 255))
         self._photos[photo_key] = photo = PhotoImage(master=self._root, image=image)
         return photo
